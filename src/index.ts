@@ -17,6 +17,9 @@ const overwriteLog = (message: string) => {
 };
 
 const selector = {
+  // inputText: ".searchboxinput",
+  scroll: "[role='feed']",
+  lastPage: ".HlvSq",
   itemLink: ".hfpxzc",
   titleForValidation: ".NrDZNb",
   title: ".DUwDvf",
@@ -32,40 +35,48 @@ const delay = (millis: number) =>
     }, millis);
   });
 
+// const search = async (page: Page, keyword: string) => {
+//   await page.focus(selector.inputText);
+//   await page.keyboard.type(`${keyword}\n`);
+// };
+
 const infiniteScroll = async (
   page: Page,
   timer: number = 100,
   prevHeight: number = 0
 ): Promise<boolean> => {
-  const scrollSelector = "[role='feed']";
-  const lastPageSelector = ".HlvSq";
-
   const currentHeight = await page.evaluate((selector) => {
-    const element = document.querySelector(selector);
+    const element = document.querySelector(selector.scroll);
     element?.scrollTo({ top: element.scrollHeight, behavior: "instant" });
     return element?.scrollHeight;
-  }, scrollSelector);
-  overwriteLog(`scroll status : ${currentHeight}, timer : ${timer}`);
-  if (prevHeight === currentHeight) {
-    if (timer-- <= 0) {
-      overwriteLog(`scroll status : ${currentHeight}`);
-      return false;
-    }
-  } else {
-    timer = 100;
-  }
+  }, selector);
 
-  if (
-    !(await page.evaluate(
-      (selector) => document.querySelector(selector),
-      lastPageSelector
-    ))
-  ) {
-    await delay(100);
-    return await infiniteScroll(page, timer, currentHeight);
+  if (currentHeight) {
+    overwriteLog(`scroll status : ${currentHeight}, timer : ${timer}`);
+    if (prevHeight === currentHeight) {
+      if (timer-- <= 0) {
+        overwriteLog(`scroll status : ${currentHeight}`);
+        return false;
+      }
+    } else {
+      timer = 100;
+    }
+
+    if (
+      !(await page.evaluate(
+        (selector) => document.querySelector(selector.lastPage),
+        selector
+      ))
+    ) {
+      await delay(100);
+      return await infiniteScroll(page, timer, currentHeight);
+    }
+    overwriteLog(`scroll status : ${currentHeight}`);
+    return true;
+  } else {
+    console.log("invalid search keyword");
+    process.exit();
   }
-  overwriteLog(`scroll status : ${currentHeight}`);
-  return true;
 };
 
 const stringifyCsv = (list: any[]) =>
@@ -75,6 +86,7 @@ const stringifyCsv = (list: any[]) =>
       {
         header: true,
         columns: ["title", "address", "phoneNumber", "websiteUrl"],
+        bom: true,
       },
       (err, output) => {
         if (err) {
@@ -88,23 +100,17 @@ const stringifyCsv = (list: any[]) =>
 
 const fetchData = async (page: Page): Promise<Item> => {
   return await page.evaluate((selector) => {
-    const encoding = (data?: string) => {
-      if (data) return "\uFEFF" + data;
-      return data;
-    };
-
-    const title = encoding(
-      document.querySelector(selector.title)?.textContent?.trim()
-    );
-    const address = encoding(
-      document.querySelector(selector.address)?.textContent?.trim()
-    );
-    const phoneNumber = encoding(
-      document.querySelector(selector.phoneNumber)?.textContent?.trim()
-    );
-    const websiteUrl = encoding(
-      document.querySelector(selector.websiteUrl)?.getAttribute("href")?.trim()
-    );
+    const title = document.querySelector(selector.title)?.textContent?.trim();
+    const address = document
+      .querySelector(selector.address)
+      ?.textContent?.trim();
+    const phoneNumber = document
+      .querySelector(selector.phoneNumber)
+      ?.textContent?.trim();
+    const websiteUrl = document
+      .querySelector(selector.websiteUrl)
+      ?.getAttribute("href")
+      ?.trim();
     return { title, address, phoneNumber, websiteUrl };
   }, selector);
 };
@@ -143,6 +149,7 @@ const init = async (keyword: string) => {
   });
   const page = (await browser.pages())[0];
   await page.goto(`https://www.google.com/maps/search/${keyword}`);
+
   console.log("scrolling list...");
   if (!(await infiniteScroll(page))) {
     await browser.close();
@@ -168,4 +175,4 @@ const init = async (keyword: string) => {
   console.log("done");
 };
 
-init(process.argv[2]);
+init(process.argv.slice(2).join(" "));
